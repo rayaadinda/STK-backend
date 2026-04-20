@@ -24,9 +24,10 @@ func (r *Repository) Transaction(ctx context.Context, fn func(txRepo *Repository
 	})
 }
 
-func (r *Repository) List(ctx context.Context) ([]Menu, error) {
+func (r *Repository) List(ctx context.Context, scope string) ([]Menu, error) {
 	var menus []Menu
 	if err := r.db.WithContext(ctx).
+		Where("module_key = ?", scope).
 		Order("CASE WHEN parent_id IS NULL THEN 0 ELSE 1 END").
 		Order("parent_id ASC").
 		Order("sort_order ASC").
@@ -38,9 +39,9 @@ func (r *Repository) List(ctx context.Context) ([]Menu, error) {
 	return menus, nil
 }
 
-func (r *Repository) GetByID(ctx context.Context, id string) (Menu, error) {
+func (r *Repository) GetByID(ctx context.Context, id, scope string) (Menu, error) {
 	var entity Menu
-	if err := r.db.WithContext(ctx).First(&entity, "id = ?", id).Error; err != nil {
+	if err := r.db.WithContext(ctx).First(&entity, "id = ? AND module_key = ?", id, scope).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return Menu{}, ErrMenuNotFound
 		}
@@ -50,11 +51,11 @@ func (r *Repository) GetByID(ctx context.Context, id string) (Menu, error) {
 	return entity, nil
 }
 
-func (r *Repository) ExistsByID(ctx context.Context, id string) (bool, error) {
+func (r *Repository) ExistsByID(ctx context.Context, id, scope string) (bool, error) {
 	var count int64
 	if err := r.db.WithContext(ctx).
 		Model(&Menu{}).
-		Where("id = ?", id).
+		Where("id = ? AND module_key = ?", id, scope).
 		Count(&count).Error; err != nil {
 		return false, fmt.Errorf("check menu existence: %w", err)
 	}
@@ -68,10 +69,10 @@ func (r *Repository) Create(ctx context.Context, entity *Menu) error {
 	return nil
 }
 
-func (r *Repository) UpdateName(ctx context.Context, id, name string) error {
+func (r *Repository) UpdateName(ctx context.Context, id, scope, name string) error {
 	result := r.db.WithContext(ctx).
 		Model(&Menu{}).
-		Where("id = ?", id).
+		Where("id = ? AND module_key = ?", id, scope).
 		Update("name", name)
 	if result.Error != nil {
 		return fmt.Errorf("update menu name: %w", result.Error)
@@ -82,8 +83,8 @@ func (r *Repository) UpdateName(ctx context.Context, id, name string) error {
 	return nil
 }
 
-func (r *Repository) DeleteByID(ctx context.Context, id string) error {
-	result := r.db.WithContext(ctx).Delete(&Menu{}, "id = ?", id)
+func (r *Repository) DeleteByID(ctx context.Context, id, scope string) error {
+	result := r.db.WithContext(ctx).Delete(&Menu{}, "id = ? AND module_key = ?", id, scope)
 	if result.Error != nil {
 		return fmt.Errorf("delete menu: %w", result.Error)
 	}
@@ -93,9 +94,9 @@ func (r *Repository) DeleteByID(ctx context.Context, id string) error {
 	return nil
 }
 
-func (r *Repository) CountByParent(ctx context.Context, parentID *string) (int, error) {
+func (r *Repository) CountByParent(ctx context.Context, scope string, parentID *string) (int, error) {
 	var count int64
-	query := r.db.WithContext(ctx).Model(&Menu{})
+	query := r.db.WithContext(ctx).Model(&Menu{}).Where("module_key = ?", scope)
 	query = scopeParent(query, parentID)
 
 	if err := query.Count(&count).Error; err != nil {
@@ -105,8 +106,11 @@ func (r *Repository) CountByParent(ctx context.Context, parentID *string) (int, 
 	return int(count), nil
 }
 
-func (r *Repository) MaxOrderByParent(ctx context.Context, parentID *string) (int, error) {
-	query := r.db.WithContext(ctx).Model(&Menu{}).Select("COALESCE(MAX(sort_order), -1)")
+func (r *Repository) MaxOrderByParent(ctx context.Context, scope string, parentID *string) (int, error) {
+	query := r.db.WithContext(ctx).
+		Model(&Menu{}).
+		Where("module_key = ?", scope).
+		Select("COALESCE(MAX(sort_order), -1)")
 	query = scopeParent(query, parentID)
 
 	var maxOrder int
@@ -117,24 +121,25 @@ func (r *Repository) MaxOrderByParent(ctx context.Context, parentID *string) (in
 	return maxOrder, nil
 }
 
-func (r *Repository) ShiftOrdersFrom(ctx context.Context, parentID *string, from int, delta int) error {
+func (r *Repository) ShiftOrdersFrom(ctx context.Context, scope string, parentID *string, from int, delta int) error {
 	if delta == 0 {
 		return nil
 	}
 
-	if err := r.shiftOrdersWithTemporaryOffset(ctx, parentID, "sort_order >= ?", []any{from}, delta); err != nil {
+	if err := r.shiftOrdersWithTemporaryOffset(ctx, scope, parentID, "sort_order >= ?", []any{from}, delta); err != nil {
 		return fmt.Errorf("shift orders from index: %w", err)
 	}
 	return nil
 }
 
-func (r *Repository) ShiftOrdersRange(ctx context.Context, parentID *string, start, end, delta int) error {
+func (r *Repository) ShiftOrdersRange(ctx context.Context, scope string, parentID *string, start, end, delta int) error {
 	if delta == 0 || start > end {
 		return nil
 	}
 
 	if err := r.shiftOrdersWithTemporaryOffset(
 		ctx,
+		scope,
 		parentID,
 		"sort_order >= ? AND sort_order <= ?",
 		[]any{start, end},
@@ -145,10 +150,10 @@ func (r *Repository) ShiftOrdersRange(ctx context.Context, parentID *string, sta
 	return nil
 }
 
-func (r *Repository) UpdateParentAndOrder(ctx context.Context, id string, parentID *string, order int) error {
+func (r *Repository) UpdateParentAndOrder(ctx context.Context, id, scope string, parentID *string, order int) error {
 	result := r.db.WithContext(ctx).
 		Model(&Menu{}).
-		Where("id = ?", id).
+		Where("id = ? AND module_key = ?", id, scope).
 		Updates(map[string]any{
 			"parent_id":  parentID,
 			"sort_order": order,
@@ -162,10 +167,10 @@ func (r *Repository) UpdateParentAndOrder(ctx context.Context, id string, parent
 	return nil
 }
 
-func (r *Repository) UpdateOrder(ctx context.Context, id string, order int) error {
+func (r *Repository) UpdateOrder(ctx context.Context, id, scope string, order int) error {
 	result := r.db.WithContext(ctx).
 		Model(&Menu{}).
-		Where("id = ?", id).
+		Where("id = ? AND module_key = ?", id, scope).
 		Update("sort_order", order)
 	if result.Error != nil {
 		return fmt.Errorf("update order: %w", result.Error)
@@ -176,16 +181,17 @@ func (r *Repository) UpdateOrder(ctx context.Context, id string, order int) erro
 	return nil
 }
 
-func (r *Repository) IsDescendant(ctx context.Context, ancestorID, targetID string) (bool, error) {
+func (r *Repository) IsDescendant(ctx context.Context, scope, ancestorID, targetID string) (bool, error) {
 	const query = `
 		WITH RECURSIVE descendants AS (
 			SELECT id, parent_id
 			FROM menus
-			WHERE id = @ancestor
+			WHERE id = @ancestor AND module_key = @scope
 			UNION ALL
 			SELECT m.id, m.parent_id
 			FROM menus m
 			INNER JOIN descendants d ON m.parent_id = d.id
+			WHERE m.module_key = @scope
 		)
 		SELECT EXISTS (
 			SELECT 1
@@ -196,7 +202,7 @@ func (r *Repository) IsDescendant(ctx context.Context, ancestorID, targetID stri
 
 	var exists bool
 	if err := r.db.WithContext(ctx).
-		Raw(query, map[string]any{"ancestor": ancestorID, "target": targetID}).
+		Raw(query, map[string]any{"scope": scope, "ancestor": ancestorID, "target": targetID}).
 		Scan(&exists).Error; err != nil {
 		return false, fmt.Errorf("check descendant relationship: %w", err)
 	}
@@ -214,12 +220,16 @@ func scopeParent(query *gorm.DB, parentID *string) *gorm.DB {
 
 func (r *Repository) shiftOrdersWithTemporaryOffset(
 	ctx context.Context,
+	scope string,
 	parentID *string,
 	condition string,
 	conditionArgs []any,
 	delta int,
 ) error {
-	baseQuery := r.db.WithContext(ctx).Model(&Menu{}).Where(condition, conditionArgs...)
+	baseQuery := r.db.WithContext(ctx).
+		Model(&Menu{}).
+		Where("module_key = ?", scope).
+		Where(condition, conditionArgs...)
 	baseQuery = scopeParent(baseQuery, parentID)
 
 	var ids []string

@@ -14,12 +14,14 @@ type Service struct {
 	repo *Repository
 }
 
+const defaultScope = "systems/menus"
+
 func NewService(repo *Repository) *Service {
 	return &Service{repo: repo}
 }
 
-func (s *Service) GetTree(ctx context.Context) ([]*TreeNode, error) {
-	menus, err := s.repo.List(ctx)
+func (s *Service) GetTree(ctx context.Context, scope string) ([]*TreeNode, error) {
+	menus, err := s.repo.List(ctx, normalizeScope(scope))
 	if err != nil {
 		return nil, err
 	}
@@ -28,8 +30,8 @@ func (s *Service) GetTree(ctx context.Context) ([]*TreeNode, error) {
 	return roots, nil
 }
 
-func (s *Service) GetByID(ctx context.Context, id string) (*TreeNode, error) {
-	menus, err := s.repo.List(ctx)
+func (s *Service) GetByID(ctx context.Context, id, scope string) (*TreeNode, error) {
+	menus, err := s.repo.List(ctx, normalizeScope(scope))
 	if err != nil {
 		return nil, err
 	}
@@ -44,6 +46,7 @@ func (s *Service) GetByID(ctx context.Context, id string) (*TreeNode, error) {
 }
 
 func (s *Service) Create(ctx context.Context, input CreateInput) (Item, error) {
+	scope := normalizeScope(input.Scope)
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
 		return Item{}, ErrMenuNameInvalid
@@ -52,7 +55,7 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Item, error) {
 	var created Menu
 	err := s.repo.Transaction(ctx, func(tx *Repository) error {
 		if input.ParentID != nil {
-			exists, err := tx.ExistsByID(ctx, *input.ParentID)
+			exists, err := tx.ExistsByID(ctx, *input.ParentID, scope)
 			if err != nil {
 				return err
 			}
@@ -61,7 +64,7 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Item, error) {
 			}
 		}
 
-		position, err := tx.CountByParent(ctx, input.ParentID)
+		position, err := tx.CountByParent(ctx, scope, input.ParentID)
 		if err != nil {
 			return err
 		}
@@ -69,6 +72,7 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Item, error) {
 		created = Menu{
 			ID:        uuid.NewString(),
 			Name:      name,
+			ModuleKey: scope,
 			ParentID:  input.ParentID,
 			SortOrder: position,
 		}
@@ -86,6 +90,7 @@ func (s *Service) Create(ctx context.Context, input CreateInput) (Item, error) {
 }
 
 func (s *Service) Update(ctx context.Context, id string, input UpdateInput) (Item, error) {
+	scope := normalizeScope(input.Scope)
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
 		return Item{}, ErrMenuNameInvalid
@@ -93,7 +98,7 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateInput) (Ite
 
 	var updated Menu
 	err := s.repo.Transaction(ctx, func(tx *Repository) error {
-		existing, err := tx.GetByID(ctx, id)
+		existing, err := tx.GetByID(ctx, id, scope)
 		if err != nil {
 			return err
 		}
@@ -103,11 +108,11 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateInput) (Ite
 			return nil
 		}
 
-		if err := tx.UpdateName(ctx, id, name); err != nil {
+		if err := tx.UpdateName(ctx, id, scope, name); err != nil {
 			return err
 		}
 
-		updated, err = tx.GetByID(ctx, id)
+		updated, err = tx.GetByID(ctx, id, scope)
 		return err
 	})
 	if err != nil {
@@ -117,18 +122,19 @@ func (s *Service) Update(ctx context.Context, id string, input UpdateInput) (Ite
 	return toItem(updated), nil
 }
 
-func (s *Service) Delete(ctx context.Context, id string) error {
+func (s *Service) Delete(ctx context.Context, id, scope string) error {
+	normalizedScope := normalizeScope(scope)
 	return s.repo.Transaction(ctx, func(tx *Repository) error {
-		target, err := tx.GetByID(ctx, id)
+		target, err := tx.GetByID(ctx, id, normalizedScope)
 		if err != nil {
 			return err
 		}
 
-		if err := tx.DeleteByID(ctx, id); err != nil {
+		if err := tx.DeleteByID(ctx, id, normalizedScope); err != nil {
 			return err
 		}
 
-		if err := tx.ShiftOrdersFrom(ctx, target.ParentID, target.SortOrder+1, -1); err != nil {
+		if err := tx.ShiftOrdersFrom(ctx, normalizedScope, target.ParentID, target.SortOrder+1, -1); err != nil {
 			return err
 		}
 
@@ -137,9 +143,10 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 }
 
 func (s *Service) Move(ctx context.Context, id string, input MoveInput) (Item, error) {
+	scope := normalizeScope(input.Scope)
 	var moved Menu
 	err := s.repo.Transaction(ctx, func(tx *Repository) error {
-		target, err := tx.GetByID(ctx, id)
+		target, err := tx.GetByID(ctx, id, scope)
 		if err != nil {
 			return err
 		}
@@ -154,7 +161,7 @@ func (s *Service) Move(ctx context.Context, id string, input MoveInput) (Item, e
 				return ErrInvalidMoveTarget
 			}
 
-			exists, err := tx.ExistsByID(ctx, *input.ParentID)
+			exists, err := tx.ExistsByID(ctx, *input.ParentID, scope)
 			if err != nil {
 				return err
 			}
@@ -162,7 +169,7 @@ func (s *Service) Move(ctx context.Context, id string, input MoveInput) (Item, e
 				return ErrParentMenuNotFound
 			}
 
-			isDescendant, err := tx.IsDescendant(ctx, id, *input.ParentID)
+			isDescendant, err := tx.IsDescendant(ctx, scope, id, *input.ParentID)
 			if err != nil {
 				return err
 			}
@@ -171,29 +178,29 @@ func (s *Service) Move(ctx context.Context, id string, input MoveInput) (Item, e
 			}
 		}
 
-		parkingOrder, err := tx.MaxOrderByParent(ctx, target.ParentID)
+		parkingOrder, err := tx.MaxOrderByParent(ctx, scope, target.ParentID)
 		if err != nil {
 			return err
 		}
 
-		if err := tx.UpdateOrder(ctx, id, parkingOrder+1); err != nil {
+		if err := tx.UpdateOrder(ctx, id, scope, parkingOrder+1); err != nil {
 			return err
 		}
 
-		if err := tx.ShiftOrdersFrom(ctx, target.ParentID, target.SortOrder+1, -1); err != nil {
+		if err := tx.ShiftOrdersFrom(ctx, scope, target.ParentID, target.SortOrder+1, -1); err != nil {
 			return err
 		}
 
-		nextPosition, err := tx.CountByParent(ctx, input.ParentID)
+		nextPosition, err := tx.CountByParent(ctx, scope, input.ParentID)
 		if err != nil {
 			return err
 		}
 
-		if err := tx.UpdateParentAndOrder(ctx, id, input.ParentID, nextPosition); err != nil {
+		if err := tx.UpdateParentAndOrder(ctx, id, scope, input.ParentID, nextPosition); err != nil {
 			return err
 		}
 
-		moved, err = tx.GetByID(ctx, id)
+		moved, err = tx.GetByID(ctx, id, scope)
 		return err
 	})
 	if err != nil {
@@ -204,13 +211,14 @@ func (s *Service) Move(ctx context.Context, id string, input MoveInput) (Item, e
 }
 
 func (s *Service) Reorder(ctx context.Context, id string, input ReorderInput) (Item, error) {
+	scope := normalizeScope(input.Scope)
 	if input.Position < 0 {
 		return Item{}, ErrInvalidPosition
 	}
 
 	var reordered Menu
 	err := s.repo.Transaction(ctx, func(tx *Repository) error {
-		target, err := tx.GetByID(ctx, id)
+		target, err := tx.GetByID(ctx, id, scope)
 		if err != nil {
 			return err
 		}
@@ -220,7 +228,7 @@ func (s *Service) Reorder(ctx context.Context, id string, input ReorderInput) (I
 				return ErrInvalidMoveTarget
 			}
 
-			exists, err := tx.ExistsByID(ctx, *input.ParentID)
+			exists, err := tx.ExistsByID(ctx, *input.ParentID, scope)
 			if err != nil {
 				return err
 			}
@@ -228,7 +236,7 @@ func (s *Service) Reorder(ctx context.Context, id string, input ReorderInput) (I
 				return ErrParentMenuNotFound
 			}
 
-			isDescendant, err := tx.IsDescendant(ctx, id, *input.ParentID)
+			isDescendant, err := tx.IsDescendant(ctx, scope, id, *input.ParentID)
 			if err != nil {
 				return err
 			}
@@ -239,7 +247,7 @@ func (s *Service) Reorder(ctx context.Context, id string, input ReorderInput) (I
 
 		sameLevel := sameParent(target.ParentID, input.ParentID)
 		if sameLevel {
-			siblingCount, err := tx.CountByParent(ctx, input.ParentID)
+			siblingCount, err := tx.CountByParent(ctx, scope, input.ParentID)
 			if err != nil {
 				return err
 			}
@@ -255,58 +263,58 @@ func (s *Service) Reorder(ctx context.Context, id string, input ReorderInput) (I
 				return nil
 			}
 
-			parkingOrder, err := tx.MaxOrderByParent(ctx, target.ParentID)
+			parkingOrder, err := tx.MaxOrderByParent(ctx, scope, target.ParentID)
 			if err != nil {
 				return err
 			}
 
-			if err := tx.UpdateOrder(ctx, id, parkingOrder+1); err != nil {
+			if err := tx.UpdateOrder(ctx, id, scope, parkingOrder+1); err != nil {
 				return err
 			}
 
 			if newPosition < target.SortOrder {
-				if err := tx.ShiftOrdersRange(ctx, input.ParentID, newPosition, target.SortOrder-1, 1); err != nil {
+				if err := tx.ShiftOrdersRange(ctx, scope, input.ParentID, newPosition, target.SortOrder-1, 1); err != nil {
 					return err
 				}
 			} else {
-				if err := tx.ShiftOrdersRange(ctx, input.ParentID, target.SortOrder+1, newPosition, -1); err != nil {
+				if err := tx.ShiftOrdersRange(ctx, scope, input.ParentID, target.SortOrder+1, newPosition, -1); err != nil {
 					return err
 				}
 			}
 
-			if err := tx.UpdateOrder(ctx, id, newPosition); err != nil {
+			if err := tx.UpdateOrder(ctx, id, scope, newPosition); err != nil {
 				return err
 			}
 		} else {
-			parkingOrder, err := tx.MaxOrderByParent(ctx, target.ParentID)
+			parkingOrder, err := tx.MaxOrderByParent(ctx, scope, target.ParentID)
 			if err != nil {
 				return err
 			}
 
-			if err := tx.UpdateOrder(ctx, id, parkingOrder+1); err != nil {
+			if err := tx.UpdateOrder(ctx, id, scope, parkingOrder+1); err != nil {
 				return err
 			}
 
-			if err := tx.ShiftOrdersFrom(ctx, target.ParentID, target.SortOrder+1, -1); err != nil {
+			if err := tx.ShiftOrdersFrom(ctx, scope, target.ParentID, target.SortOrder+1, -1); err != nil {
 				return err
 			}
 
-			siblingCount, err := tx.CountByParent(ctx, input.ParentID)
+			siblingCount, err := tx.CountByParent(ctx, scope, input.ParentID)
 			if err != nil {
 				return err
 			}
 
 			newPosition := clamp(input.Position, 0, siblingCount)
-			if err := tx.ShiftOrdersFrom(ctx, input.ParentID, newPosition, 1); err != nil {
+			if err := tx.ShiftOrdersFrom(ctx, scope, input.ParentID, newPosition, 1); err != nil {
 				return err
 			}
 
-			if err := tx.UpdateParentAndOrder(ctx, id, input.ParentID, newPosition); err != nil {
+			if err := tx.UpdateParentAndOrder(ctx, id, scope, input.ParentID, newPosition); err != nil {
 				return err
 			}
 		}
 
-		reordered, err = tx.GetByID(ctx, id)
+		reordered, err = tx.GetByID(ctx, id, scope)
 		return err
 	})
 	if err != nil {
@@ -321,6 +329,15 @@ func ValidateUUID(value string) error {
 		return fmt.Errorf("invalid uuid: %w", err)
 	}
 	return nil
+}
+
+func normalizeScope(scope string) string {
+	normalized := strings.TrimSpace(scope)
+	if normalized == "" {
+		return defaultScope
+	}
+
+	return normalized
 }
 
 func toItem(entity Menu) Item {

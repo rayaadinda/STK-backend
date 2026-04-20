@@ -21,6 +21,8 @@ paths:
     get:
       summary: Get all menus as tree
       tags: [Menus]
+      parameters:
+        - $ref: '#/components/parameters/MenuScope'
       responses:
         '200':
           description: Menu tree returned
@@ -38,6 +40,8 @@ paths:
     post:
       summary: Create a menu
       tags: [Menus]
+      parameters:
+        - $ref: '#/components/parameters/MenuScope'
       requestBody:
         required: true
         content:
@@ -68,6 +72,7 @@ paths:
       tags: [Menus]
       parameters:
         - $ref: '#/components/parameters/MenuID'
+        - $ref: '#/components/parameters/MenuScope'
       responses:
         '200':
           description: Menu returned
@@ -91,6 +96,7 @@ paths:
       tags: [Menus]
       parameters:
         - $ref: '#/components/parameters/MenuID'
+        - $ref: '#/components/parameters/MenuScope'
       requestBody:
         required: true
         content:
@@ -114,6 +120,7 @@ paths:
       tags: [Menus]
       parameters:
         - $ref: '#/components/parameters/MenuID'
+        - $ref: '#/components/parameters/MenuScope'
       responses:
         '200':
           description: Menu deleted
@@ -127,6 +134,7 @@ paths:
       tags: [Menus]
       parameters:
         - $ref: '#/components/parameters/MenuID'
+        - $ref: '#/components/parameters/MenuScope'
       requestBody:
         required: true
         content:
@@ -157,6 +165,7 @@ paths:
       tags: [Menus]
       parameters:
         - $ref: '#/components/parameters/MenuID'
+        - $ref: '#/components/parameters/MenuScope'
       requestBody:
         required: true
         content:
@@ -190,6 +199,14 @@ components:
       schema:
         type: string
         format: uuid
+    MenuScope:
+      name: scope
+      in: query
+      required: false
+      schema:
+        type: string
+        default: systems/menus
+      description: Menu data namespace. Use app router path to isolate menu trees per module.
   schemas:
     SuccessEnvelope:
       type: object

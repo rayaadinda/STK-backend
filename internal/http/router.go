@@ -2,8 +2,11 @@ package httpserver
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 	"gorm.io/gorm"
 
 	"stk-backend/internal/config"
@@ -15,17 +18,22 @@ func NewRouter(cfg config.Config, db *gorm.DB) *gin.Engine {
 	setGinMode(cfg.App.Env)
 
 	router := gin.New()
-	router.Use(gin.Logger(), gin.Recovery(), corsMiddleware(cfg.App.CORSAllowOrigin))
+	router.Use(gin.Logger(), gin.Recovery(), docsEntryMiddleware(), corsMiddleware(cfg.App.CORSAllowOrigin))
 	router.StaticFile("/openapi.yaml", "./docs/openapi.yaml")
 
 	healthHandler := handlers.NewHealthHandler(db)
 	menuRepository := menu.NewRepository(db)
 	menuService := menu.NewService(menuRepository)
 	menuHandler := handlers.NewMenuHandler(menuService)
+	swaggerHandler := ginSwagger.WrapHandler(
+		swaggerFiles.Handler,
+		ginSwagger.URL("/openapi.yaml"),
+	)
 
 	api := router.Group("/api")
 	{
 		api.GET("/health", healthHandler.Ping)
+		api.GET("/docs/*any", swaggerHandler)
 
 		menus := api.Group("/menus")
 		{
@@ -40,6 +48,26 @@ func NewRouter(cfg config.Config, db *gorm.DB) *gin.Engine {
 	}
 
 	return router
+}
+
+func docsEntryMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		path := c.Request.URL.Path
+
+		if c.Request.Method == http.MethodHead && strings.HasPrefix(path, "/api/docs") {
+			c.Status(http.StatusOK)
+			c.Abort()
+			return
+		}
+
+		if path == "/api/docs" || path == "/api/docs/" {
+			c.Redirect(http.StatusTemporaryRedirect, "/api/docs/index.html")
+			c.Abort()
+			return
+		}
+
+		c.Next()
+	}
 }
 
 func corsMiddleware(allowOrigin string) gin.HandlerFunc {

@@ -37,8 +37,11 @@ type reorderMenuRequest struct {
 	Position *int    `json:"position" binding:"required"`
 }
 
+const defaultMenuScope = "systems/menus"
+
 func (h *MenuHandler) GetAll(c *gin.Context) {
-	tree, err := h.service.GetTree(c.Request.Context())
+	scope := parseMenuScope(c)
+	tree, err := h.service.GetTree(c.Request.Context(), scope)
 	if err != nil {
 		h.handleError(c, err)
 		return
@@ -53,7 +56,9 @@ func (h *MenuHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	node, err := h.service.GetByID(c.Request.Context(), menuID)
+	scope := parseMenuScope(c)
+
+	node, err := h.service.GetByID(c.Request.Context(), menuID, scope)
 	if err != nil {
 		h.handleError(c, err)
 		return
@@ -63,6 +68,8 @@ func (h *MenuHandler) GetByID(c *gin.Context) {
 }
 
 func (h *MenuHandler) Create(c *gin.Context) {
+	scope := parseMenuScope(c)
+
 	var request createMenuRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		response.JSONError(c, http.StatusBadRequest, "INVALID_REQUEST", "invalid request payload", gin.H{"details": err.Error()})
@@ -83,6 +90,7 @@ func (h *MenuHandler) Create(c *gin.Context) {
 	}
 
 	created, err := h.service.Create(c.Request.Context(), menu.CreateInput{
+		Scope:    scope,
 		Name:     request.Name,
 		ParentID: request.ParentID,
 	})
@@ -100,6 +108,8 @@ func (h *MenuHandler) Update(c *gin.Context) {
 		return
 	}
 
+	scope := parseMenuScope(c)
+
 	var request updateMenuRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
 		response.JSONError(c, http.StatusBadRequest, "INVALID_REQUEST", "invalid request payload", gin.H{"details": err.Error()})
@@ -107,7 +117,8 @@ func (h *MenuHandler) Update(c *gin.Context) {
 	}
 
 	updated, err := h.service.Update(c.Request.Context(), menuID, menu.UpdateInput{
-		Name: request.Name,
+		Scope: scope,
+		Name:  request.Name,
 	})
 	if err != nil {
 		h.handleError(c, err)
@@ -123,7 +134,9 @@ func (h *MenuHandler) Delete(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.Delete(c.Request.Context(), menuID); err != nil {
+	scope := parseMenuScope(c)
+
+	if err := h.service.Delete(c.Request.Context(), menuID, scope); err != nil {
 		h.handleError(c, err)
 		return
 	}
@@ -136,6 +149,8 @@ func (h *MenuHandler) Move(c *gin.Context) {
 	if !ok {
 		return
 	}
+
+	scope := parseMenuScope(c)
 
 	var request moveMenuRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
@@ -157,6 +172,7 @@ func (h *MenuHandler) Move(c *gin.Context) {
 	}
 
 	moved, err := h.service.Move(c.Request.Context(), menuID, menu.MoveInput{
+		Scope:    scope,
 		ParentID: request.ParentID,
 	})
 	if err != nil {
@@ -172,6 +188,8 @@ func (h *MenuHandler) Reorder(c *gin.Context) {
 	if !ok {
 		return
 	}
+
+	scope := parseMenuScope(c)
 
 	var request reorderMenuRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
@@ -198,6 +216,7 @@ func (h *MenuHandler) Reorder(c *gin.Context) {
 	}
 
 	reordered, err := h.service.Reorder(c.Request.Context(), menuID, menu.ReorderInput{
+		Scope:    scope,
 		ParentID: request.ParentID,
 		Position: *request.Position,
 	})
@@ -222,6 +241,15 @@ func parsePathMenuID(c *gin.Context) (string, bool) {
 	}
 
 	return menuID, true
+}
+
+func parseMenuScope(c *gin.Context) string {
+	scope := strings.TrimSpace(c.Query("scope"))
+	if scope == "" {
+		return defaultMenuScope
+	}
+
+	return scope
 }
 
 func (h *MenuHandler) handleError(c *gin.Context, err error) {

@@ -1,19 +1,23 @@
 package menu
 
 type CreateInput struct {
+	Scope    string
 	Name     string
 	ParentID *string
 }
 
 type UpdateInput struct {
-	Name string
+	Scope string
+	Name  string
 }
 
 type MoveInput struct {
+	Scope    string
 	ParentID *string
 }
 
 type ReorderInput struct {
+	Scope    string
 	ParentID *string
 	Position int
 }
