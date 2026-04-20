@@ -2,7 +2,6 @@ package httpserver
 
 import (
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
@@ -54,10 +53,13 @@ func docsEntryMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
 
-		if c.Request.Method == http.MethodHead && strings.HasPrefix(path, "/api/docs") {
-			c.Status(http.StatusOK)
-			c.Abort()
-			return
+		if c.Request.Method == http.MethodHead {
+			switch path {
+			case "/api/docs", "/api/docs/", "/api/docs/index.html":
+				c.Status(http.StatusOK)
+				c.Abort()
+				return
+			}
 		}
 
 		if path == "/api/docs" || path == "/api/docs/" {
