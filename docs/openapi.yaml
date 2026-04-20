@@ -1,0 +1,283 @@
+openapi: 3.0.3
+info:
+  title: STK Backend API
+  version: 1.0.0
+  description: Menu tree management API for the STK technical test.
+servers:
+  - url: http://localhost:8080
+paths:
+  /api/health:
+    get:
+      summary: Health check
+      tags: [Health]
+      responses:
+        '200':
+          description: Service healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+  /api/menus:
+    get:
+      summary: Get all menus as tree
+      tags: [Menus]
+      responses:
+        '200':
+          description: Menu tree returned
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/MenuNode'
+    post:
+      summary: Create a menu
+      tags: [Menus]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMenuRequest'
+      responses:
+        '201':
+          description: Menu created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MenuItem'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/menus/{id}:
+    get:
+      summary: Get single menu by ID
+      tags: [Menus]
+      parameters:
+        - $ref: '#/components/parameters/MenuID'
+      responses:
+        '200':
+          description: Menu returned
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MenuNode'
+        '404':
+          description: Menu not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    put:
+      summary: Update menu name
+      tags: [Menus]
+      parameters:
+        - $ref: '#/components/parameters/MenuID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMenuRequest'
+      responses:
+        '200':
+          description: Menu updated
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MenuItem'
+    delete:
+      summary: Delete menu and descendants
+      tags: [Menus]
+      parameters:
+        - $ref: '#/components/parameters/MenuID'
+      responses:
+        '200':
+          description: Menu deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessEnvelope'
+  /api/menus/{id}/move:
+    patch:
+      summary: Move menu to a different parent
+      tags: [Menus]
+      parameters:
+        - $ref: '#/components/parameters/MenuID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MoveMenuRequest'
+      responses:
+        '200':
+          description: Menu moved
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MenuItem'
+        '400':
+          description: Invalid move request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/menus/{id}/reorder:
+    patch:
+      summary: Reorder menu within a level
+      tags: [Menus]
+      parameters:
+        - $ref: '#/components/parameters/MenuID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReorderMenuRequest'
+      responses:
+        '200':
+          description: Menu reordered
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessEnvelope'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/MenuItem'
+        '400':
+          description: Invalid reorder request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+components:
+  parameters:
+    MenuID:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    SuccessEnvelope:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: menus retrieved
+        data: {}
+      required: [success]
+    ErrorEnvelope:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            details: {}
+          required: [code, message]
+      required: [success, error]
+    MenuItem:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        parentId:
+          type: string
+          format: uuid
+          nullable: true
+        position:
+          type: integer
+          minimum: 0
+      required: [id, name, position]
+    MenuNode:
+      allOf:
+        - $ref: '#/components/schemas/MenuItem'
+        - type: object
+          properties:
+            children:
+              type: array
+              items:
+                $ref: '#/components/schemas/MenuNode'
+    CreateMenuRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        parentId:
+          type: string
+          format: uuid
+          nullable: true
+      required: [name]
+    UpdateMenuRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+      required: [name]
+    MoveMenuRequest:
+      type: object
+      properties:
+        parentId:
+          type: string
+          format: uuid
+          nullable: true
+    ReorderMenuRequest:
+      type: object
+      properties:
+        parentId:
+          type: string
+          format: uuid
+          nullable: true
+        position:
+          type: integer
+          minimum: 0
+      required: [position]

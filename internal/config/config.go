@@ -20,6 +20,7 @@ type AppConfig struct {
 	Name            string
 	Env             string
 	Port            string
+	CORSAllowOrigin string
 	ReadTimeout     time.Duration
 	WriteTimeout    time.Duration
 	ShutdownTimeout time.Duration
@@ -46,6 +47,7 @@ func Load() (Config, error) {
 			Name:            getEnv("APP_NAME", "stk-backend"),
 			Env:             getEnv("APP_ENV", "development"),
 			Port:            getEnv("APP_PORT", "8080"),
+			CORSAllowOrigin: getEnv("APP_CORS_ALLOW_ORIGIN", "http://localhost:3000"),
 			ReadTimeout:     time.Duration(getEnvAsInt("APP_READ_TIMEOUT_SECONDS", 15)) * time.Second,
 			WriteTimeout:    time.Duration(getEnvAsInt("APP_WRITE_TIMEOUT_SECONDS", 15)) * time.Second,
 			ShutdownTimeout: time.Duration(getEnvAsInt("APP_SHUTDOWN_TIMEOUT_SECONDS", 10)) * time.Second,

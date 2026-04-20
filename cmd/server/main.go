@@ -10,10 +10,11 @@ import (
 	"syscall"
 	"time"
 
-	"gorm.io/gorm"
 	"stk-backend/internal/config"
 	"stk-backend/internal/database"
 	httpserver "stk-backend/internal/http"
+
+	"gorm.io/gorm"
 )
 
 func main() {
@@ -25,6 +26,10 @@ func main() {
 	db, err := database.NewPostgres(cfg.Database)
 	if err != nil {
 		log.Fatalf("initialize database: %v", err)
+	}
+
+	if err := database.Migrate(db); err != nil {
+		log.Fatalf("run database migration: %v", err)
 	}
 
 	router := httpserver.NewRouter(cfg, db)
