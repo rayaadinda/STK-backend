@@ -1,0 +1,51 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: stk-backend-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME:-stk_backend}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - stk-backend-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-stk_backend}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: stk-backend-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      APP_NAME: ${APP_NAME:-stk-backend}
+      APP_ENV: ${APP_ENV:-development}
+      APP_PORT: "8080"
+      APP_CORS_ALLOW_ORIGIN: ${APP_CORS_ALLOW_ORIGIN:-http://localhost:3000}
+      APP_READ_TIMEOUT_SECONDS: ${APP_READ_TIMEOUT_SECONDS:-15}
+      APP_WRITE_TIMEOUT_SECONDS: ${APP_WRITE_TIMEOUT_SECONDS:-15}
+      APP_SHUTDOWN_TIMEOUT_SECONDS: ${APP_SHUTDOWN_TIMEOUT_SECONDS:-10}
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-postgres}
+      DB_NAME: ${DB_NAME:-stk_backend}
+      DB_SSLMODE: ${DB_SSLMODE:-disable}
+      DB_TIMEZONE: ${DB_TIMEZONE:-UTC}
+      DB_MAX_IDLE_CONNS: ${DB_MAX_IDLE_CONNS:-10}
+      DB_MAX_OPEN_CONNS: ${DB_MAX_OPEN_CONNS:-50}
+      DB_CONN_MAX_LIFETIME_MINUTES: ${DB_CONN_MAX_LIFETIME_MINUTES:-30}
+    ports:
+      - "${APP_PORT:-8080}:8080"
+
+volumes:
+  stk-backend-postgres-data:
