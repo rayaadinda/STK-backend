@@ -10,62 +10,6 @@ Backend service for menu tree CRUD API, built with Go, Gin, GORM, and PostgreSQL
 
 ## Setup Instructions
 
-1. Move to backend folder.
-
-```bash
-cd backend
-```
-
-2. Copy environment template.
-
-```bash
-cp .env.example .env
-```
-
-3. Install dependencies.
-
-```bash
-go mod download
-```
-
-4. Make sure PostgreSQL is running and matches variables in `.env`.
-
-## Run in Development Mode
-
-From backend folder:
-
-```bash
-go run ./cmd/server
-```
-
-Or with Makefile:
-
-```bash
-make run
-```
-
-The API will run on `http://localhost:8080` by default.
-
-## Run in Production Mode
-
-1. Set production environment (for example in `.env`):
-
-```env
-APP_ENV=production
-```
-
-2. Build binary:
-
-```bash
-go build -o bin/stk-backend ./cmd/server
-```
-
-3. Run binary:
-
-```bash
-./bin/stk-backend
-```
-
 ## Run with Docker
 
 This backend repository includes local Docker setup:
@@ -91,6 +35,30 @@ Stop containers:
 ```bash
 docker compose down
 ```
+The API will run on http://localhost:8080 by default.
+
+
+
+## Run in Production Mode
+
+1. Set production environment (for example in `.env`):
+
+```env
+APP_ENV=production
+```
+
+2. Build binary:
+
+```bash
+go build -o bin/stk-backend ./cmd/server
+```
+
+3. Run binary:
+
+```bash
+./bin/stk-backend
+```
+
 
 ## API Documentation
 
